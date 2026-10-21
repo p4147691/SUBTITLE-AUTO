@@ -35,3 +35,32 @@ jobs:
           assert 'config.json' not in names, 'Local config tracked'
           print(f'Sensitive-path guard PASS: {len(names)} tracked files')
           '@ | python -
+
+  distribution-bootstrap-validation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: First-run distribution tests
+        run: python -m unittest test_distribution_bootstrap -v
+      - name: Build portable source preview
+        run: python distribution/build_portable.py --output dist/Subtitle-AUTO-source-preview.zip
+      - name: Build Inno Setup preview
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = [System.IO.Path]::Combine([Environment]::GetFolderPath('ProgramFilesX86'),'Inno Setup 6','ISCC.exe')
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler missing" }
+          & $iscc distribution/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed" }
+      - name: Upload preview artifacts (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-auto-source-only-preview
+          path: |
+            dist/*.zip
+            distribution/dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
