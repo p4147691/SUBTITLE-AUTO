@@ -55,6 +55,26 @@ jobs:
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler missing" }
           & $iscc distribution/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed" }
+      - name: Clean Windows installer install/uninstall smoke
+        shell: pwsh
+        run: |
+          $setup = Join-Path (Get-Location) 'distribution/dist/Subtitle-AUTO-Setup-0.1.0-preview.exe'
+          if (!(Test-Path $setup)) { throw "Installer artifact missing" }
+          $target = Join-Path $env:RUNNER_TEMP 'SubtitleAutoCleanInstall'
+          $proc = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $target)) -PassThru -Wait
+          if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
+          if (!(Test-Path (Join-Path $target 'distribution/bootstrap.py'))) { throw "Missing bootstrap after installation" }
+          & python (Join-Path $target 'distribution/bootstrap.py') --check
+          if ($LASTEXITCODE -ne 0) { throw "Installed bootstrap failed" }
+          $config = Join-Path $target 'config.json'
+          if (Test-Path $config) { throw "Installer must not create private config" }
+          & python (Join-Path $target 'distribution/bootstrap.py') --init-config
+          if (!(Test-Path $config)) { throw "Failed to initialize private config" }
+          $uninstaller = Join-Path $target 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw "Uninstaller missing" }
+          $proc = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
+          if ($proc.ExitCode -ne 0) { throw "Uninstall failed: $($proc.ExitCode)" }
+          if (Test-Path (Join-Path $target 'subtitle_client.py')) { throw "Uninstall left application source" }
       - name: Upload preview artifacts (not a release)
         uses: actions/upload-artifact@v4
         with:
