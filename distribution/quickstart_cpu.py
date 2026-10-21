@@ -20,6 +20,13 @@ if sys.stdout is None:
     sys.stdout = open(os.devnull, "w", encoding="utf-8")
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if _reconfigure is not None:
+        try:
+            _reconfigure(errors="backslashreplace")
+        except (OSError, ValueError, TypeError):
+            pass
 
 MODEL_NAMES = {"tiny": "tiny", "base": "base", "small": "small"}
 FORMATS = {".mp4", ".mkv", ".avi", ".mov", ".webm",
