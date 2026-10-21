@@ -18,11 +18,13 @@ WizardStyle=modern
 [Files]
 Source: "..\*.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\*.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build_binary\Subtitle-AUTO-CPU.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\ENCODING_POLICY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "bootstrap.py"; DestDir: "{app}\distribution"; Flags: ignoreversion
 Source: "config.example.json"; DestDir: "{app}\distribution"; Flags: ignoreversion
 [Icons]
 Name: "{group}\Subtitle-AUTO documentation"; Filename: "{app}\README.md"
+Name: "{group}\Subtitle-AUTO CPU 자막 생성"; Filename: "{app}\Subtitle-AUTO-CPU.exe"
 [Run]
 Filename: "notepad.exe"; Parameters: """{app}\README.md"""; Description: "설치 안내 읽기"; Flags: postinstall nowait skipifsilent
