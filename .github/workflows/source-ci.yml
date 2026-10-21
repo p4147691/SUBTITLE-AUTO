@@ -1,0 +1,37 @@
+name: Subtitle-AUTO source validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  syntax-and-safety:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python syntax verification
+        shell: pwsh
+        run: |
+          @'
+          import ast, pathlib
+          paths = sorted(pathlib.Path('.').glob('*.py'))
+          assert paths, 'No Python source files'
+          for path in paths:
+              ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+          print(f'Syntax PASS: {len(paths)} Python files')
+          '@ | python -
+      - name: No models, secrets, media or environments tracked
+        shell: pwsh
+        run: |
+          @'
+          import subprocess, pathlib, re
+          names = subprocess.check_output(['git','ls-files'], text=True, encoding='utf-8').splitlines()
+          forbidden = re.compile(r'(^|/)(models|private|logs|backups|\.venv[^/]*|\.paddlex|__pycache__)(/|$)|\.(safetensors|onnx|gguf|pt|pth|ckpt|bin|sqlite|db|mp4|mkv|wav|mp3|srt|jpg|png)$', re.I)
+          bad = [n for n in names if forbidden.search(n)]
+          assert not bad, f'Forbidden committed files: {bad}'
+          assert 'config.json' not in names, 'Local config tracked'
+          print(f'Sensitive-path guard PASS: {len(names)} tracked files')
+          '@ | python -
