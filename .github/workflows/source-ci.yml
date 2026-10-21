@@ -68,23 +68,48 @@ jobs:
           $setup = Join-Path (Get-Location) 'distribution/dist/Subtitle-AUTO-Setup-0.1.0-preview.exe'
           if (!(Test-Path $setup)) { throw "Installer artifact missing" }
           $target = Join-Path $env:RUNNER_TEMP 'SubtitleAutoCleanInstall'
-          $proc = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $target)) -PassThru -Wait
+          Write-Output 'PHASE_1_INSTALL_START'
+          $proc = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + $target)) -PassThru
+          try { $proc | Wait-Process -Timeout 90 -ErrorAction Stop } catch {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw 'SETUP_INSTALL_TIMEOUT'
+          }
+          $proc.Refresh()
           if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
+          Write-Output 'PHASE_1_INSTALL_PASS'
           if (!(Test-Path (Join-Path $target 'distribution/bootstrap.py'))) { throw "Missing bootstrap after installation" }
           $binary = Join-Path $target 'Subtitle-AUTO-CPU.exe'
           if (!(Test-Path $binary)) { throw "Missing standalone CPU executable" }
-          $help = Start-Process -FilePath $binary -ArgumentList @('--help') -PassThru -Wait
+          Write-Output 'PHASE_2_EXE_HELP_START'
+          $help = Start-Process -FilePath $binary -ArgumentList @('--help') -PassThru
+          try { $help | Wait-Process -Timeout 90 -ErrorAction Stop } catch {
+            Stop-Process -Id $help.Id -Force -ErrorAction SilentlyContinue
+            throw 'EXE_HELP_TIMEOUT'
+          }
+          $help.Refresh()
           if ($help.ExitCode -ne 0) { throw "Standalone executable failed to launch" }
+          Write-Output 'PHASE_2_EXE_HELP_PASS'
           # Real speech-to-subtitle acceptance on a fresh Windows runner (English SAPI fixture).
           Add-Type -AssemblyName System.Speech
+          Write-Output 'PHASE_3_SPEECH_FIXTURE_START'
           $speech = New-Object System.Speech.Synthesis.SpeechSynthesizer
           $wav = Join-Path $env:RUNNER_TEMP 'SubtitleAutoEnglishSpeech.wav'
           $speech.SetOutputToWaveFile($wav)
           $speech.Speak('Hello. This is a test of automatic speech recognition. The subtitles should appear after processing.')
           $speech.Dispose()
           if (!(Test-Path $wav)) { throw "Speech fixture not created" }
-          $infer = Start-Process -FilePath $binary -ArgumentList @('--input', ('"' + $wav + '"'), '--model','tiny','--language','en') -PassThru -Wait
+          Write-Output 'PHASE_3_SPEECH_FIXTURE_PASS'
+          Write-Output 'PHASE_4_CPU_INFERENCE_START'
+          $infer = Start-Process -FilePath $binary -ArgumentList @('--input', ('"' + $wav + '"'), '--model','tiny','--language','en') -PassThru
+          try {
+            $infer | Wait-Process -Timeout 360 -ErrorAction Stop
+          } catch {
+            Stop-Process -Id $infer.Id -Force -ErrorAction SilentlyContinue
+            throw "CPU transcription did not finish within six minutes"
+          }
+          $infer.Refresh()
           if ($infer.ExitCode -ne 0) { throw "CPU transcription failed: $($infer.ExitCode)" }
+          Write-Output 'PHASE_4_CPU_INFERENCE_EXIT_PASS'
           $srt = [System.IO.Path]::ChangeExtension($wav, 'srt')
           if (!(Test-Path $srt)) { throw "Missing generated SRT" }
           $srtText = [System.IO.File]::ReadAllText($srt, [System.Text.Encoding]::UTF8)
