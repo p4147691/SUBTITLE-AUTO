@@ -5,6 +5,7 @@ Model source: Systran/faster-whisper-{tiny,base,small}; attribution in docs.
 """
 from __future__ import annotations
 import argparse
+import json
 import os
 from pathlib import Path
 import sys
