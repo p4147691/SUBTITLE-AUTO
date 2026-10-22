@@ -1,11 +1,21 @@
-# 모델/런타임 라이선스 검토 — 배포 게이트
+# Model and runtime license review for Subtitle-AUTO 0.1.0 Quickstart
 
-- SenseVoiceSmall: https://huggingface.co/FunAudioLLM/SenseVoiceSmall (모델 카드의 license: model-license). 재배포 조건 원문 확인 전 가중치 **동봉 금지**.
-- Qwen3-ASR 및 ForcedAligner: https://github.com/QwenLM/Qwen3-ASR (공식 다운로드 경로 안내). 각 배포 태그의 정확한 모델별 라이선스·notice 및 변경사항 확인 필요.
-- Whisper: https://huggingface.co/Systran/faster-whisper-large-v3 (MIT). 현재 사용 중인 large-v3-turbo와 다른 저장소이므로 turbo 출처 및 라이선스 확인 필요.
-- FSMN-VAD: 로컬 저장소와 동일한 정확한 업스트림 모델 ID 및 라이선스 미확정. 다운로드 자동화 차단.
-- FFmpeg: 배포할 바이너리의 LGPL/GPL 빌드 옵션·고지·소스 제공 의무 확인 필요.
-- CUDA/PyTorch/ctranslate2/torch wheels: 바이너리 재배포 라이선스 및 NVIDIA 호환 드라이버 조건 검토 필요.
-- 사용자 미디어·자막은 로컬 처리 전제이며 다운로드 동의 외에 원격 전송 없음. 개인정보·민감 경로를 로그로 노출하지 않도록 추후 감사 필요.
+Verified release scope: faster-whisper Whisper Tiny/Base/Small CPU/GPU transcription.
+Models are downloaded explicitly on first use; weights are not redistributed.
 
-판정: **NOT_RELEASE_READY**. 소스 전용 프리뷰만 CI에서 빌드. 사용자용 공식 Release 금지.
+- Whisper Tiny/Base/Small: MIT model licenses, separate user-initiated download.
+- faster-whisper / CTranslate2: MIT notices present.
+- PyAV binding: BSD-3-Clause, independently rebuilt against LGPL-only FFmpeg
+  shared libraries. The PyPI GPL-enabled wheel is rejected by binary inspection.
+- FFmpeg linked binaries: LGPL v3+, corresponding upstream commit, build flags
+  and source bundle are distributed alongside the application.
+- PyInstaller runtime bootloader: GPL with special linking exception.
+- Personal media never uploaded by application; only model download requests go to Hugging Face.
+
+The original developer-only SenseVoice, Qwen, FSMN-VAD and OCR features are
+not included in this Quickstart 0.1.0 binary. Their independent license reviews
+remain out of scope for this first Windows distribution.
+
+Release gating requires matching CPU Windows install/transcribe/uninstall CI
+and physical NVIDIA CUDA packaged EXE transcription and clean process exit,
+plus SHA256 checksums of all release files.

@@ -30,7 +30,8 @@ Python과 FFmpeg의 별도 수동 설치는 기본 자막 생성기에 필요하
 
 음성과 영상은 로컬에서 처리됩니다. 모델 파일 다운로드 시 Hugging Face에 접속합니다.
 배포 파일에는 모델 가중치·개인 파일·비밀번호·사용자 설정이 포함되지 않습니다.
-자세한 사항은 PRIVACY.md, THIRD_PARTY_NOTICES.md를 확인하세요.
+자세한 사항은 PRIVACY.md, THIRD_PARTY_NOTICES.md, QUICKSTART_LICENSE.txt를 확인하세요.
+FFmpeg LGPL 구성과 재빌드에 필요한 대응 소스는 GitHub Releases의 Subtitle-AUTO-LGPL-Sources-0.1.0.zip으로 제공합니다.
 모델 캐시는 사용자 LOCALAPPDATA/Subtitle-AUTO/models에 저장됩니다.
 설치 제거 뒤에도 사용자가 내려받은 모델은 남을 수 있습니다.
 

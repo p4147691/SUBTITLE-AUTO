@@ -16,11 +16,10 @@ PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\README.md
 WizardStyle=modern
 [Files]
-Source: "..\*.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\*.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build_binary\Subtitle-AUTO.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "QUICKSTART_LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\ENCODING_POLICY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "bootstrap.py"; DestDir: "{app}\distribution"; Flags: ignoreversion

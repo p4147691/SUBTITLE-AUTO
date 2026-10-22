@@ -11,6 +11,7 @@ def build(executable: Path, output: Path):
         zipfile.write(executable,"Subtitle-AUTO-Portable/Subtitle-AUTO.exe")
         zipfile.write(ROOT/"README.md","Subtitle-AUTO-Portable/README.md")
         zipfile.write(ROOT/"distribution"/"THIRD_PARTY_NOTICES.md","Subtitle-AUTO-Portable/THIRD_PARTY_NOTICES.md")
+        zipfile.write(ROOT/"distribution"/"QUICKSTART_LICENSE.txt","Subtitle-AUTO-Portable/QUICKSTART_LICENSE.txt")
         zipfile.write(ROOT/"distribution"/"PRIVACY.md","Subtitle-AUTO-Portable/PRIVACY.md")
         zipfile.write(ROOT/"distribution"/"MODEL_LICENSE_REVIEW.md","Subtitle-AUTO-Portable/MODEL_LICENSE_REVIEW.md")
     return output
