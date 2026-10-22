@@ -112,14 +112,23 @@ jobs:
           if (!(Test-Path $wav)) { throw "Speech fixture not created" }
           Write-Output 'PHASE_3_SPEECH_FIXTURE_PASS'
           Write-Output 'PHASE_4_CPU_INFERENCE_START'
-          $infer = Start-Process -FilePath $binary -ArgumentList @('--input', ('"' + $wav + '"'), '--model','tiny','--language','en','--device','cpu') -PassThru
+          $log = Join-Path $env:RUNNER_TEMP 'SubtitleAutoInfer.log'
+          $diag = Join-Path $env:RUNNER_TEMP 'SubtitleAutoInfer.stderr.log'
+          Write-Output "CI_DIAG_MODEL_CACHE: $env:LOCALAPPDATA\\Subtitle-AUTO\\models"
+          $env:SUBTITLE_AUTO_DIAG_LOG = Join-Path $env:RUNNER_TEMP 'SubtitleAutoPhases.log' 
+          $infer = Start-Process -FilePath $binary -ArgumentList @('--input', ('"' + $wav + '"'), '--model','tiny','--language','en','--device','cpu') -PassThru -RedirectStandardOutput $log -RedirectStandardError $diag
           try {
             $infer | Wait-Process -Timeout 360 -ErrorAction Stop
           } catch {
             Stop-Process -Id $infer.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $env:SUBTITLE_AUTO_DIAG_LOG) { Get-Content $env:SUBTITLE_AUTO_DIAG_LOG -Tail 80 }
+            if (Test-Path $log) { Get-Content $log -Tail 80 }
+            if (Test-Path $diag) { Get-Content $diag -Tail 80 }
             throw "CPU transcription did not finish within six minutes"
           }
           $infer.Refresh()
+          if (Test-Path $log) { Get-Content $log -Tail 80 }
+          if (Test-Path $diag) { Get-Content $diag -Tail 80 }
           if ($infer.ExitCode -ne 0) { throw "CPU transcription failed: $($infer.ExitCode)" }
           Write-Output 'PHASE_4_CPU_INFERENCE_EXIT_PASS'
           $srt = [System.IO.Path]::ChangeExtension($wav, 'srt')

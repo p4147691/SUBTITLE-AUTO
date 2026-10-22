@@ -123,9 +123,11 @@ def transcribe(src: Path, model_name="tiny", language=None, on_status=print, dev
     if model is None:
         raise RuntimeError("실행 가능한 CPU/GPU 엔진을 준비하지 못했습니다.")
     on_status(f"음성 인식 진행 중... ({selected.upper()})")
+    on_status("모델 준비 완료, 음성 디코딩 및 인식 시작")
     segs, _info = model.transcribe(
         str(src), beam_size=3, language=language, vad_filter=False,
         condition_on_previous_text=False, word_timestamps=False)
+    on_status("음성 구간 인식 중...")
     cues = []
     for seg in segs:
         txt = re.sub(r"\s+", " ", str(seg.text)).strip()
@@ -210,7 +212,14 @@ def main(argv=None):
     parser.add_argument("--language",choices=("auto","ko","ja","en"),default="auto")
     args=parser.parse_args(argv)
     if args.input:
-        transcribe(args.input,args.model,None if args.language=="auto" else args.language,device=args.device)
+        def report_status(message):
+            print(message, flush=True)
+            diag_path = os.environ.get("SUBTITLE_AUTO_DIAG_LOG")
+            if diag_path:
+                with open(diag_path, "a", encoding="utf-8") as stream:
+                    stream.write(message + "\n")
+        transcribe(args.input,args.model,None if args.language=="auto" else args.language,
+                   on_status=report_status,device=args.device)
     else:main_gui()
     return 0
 
