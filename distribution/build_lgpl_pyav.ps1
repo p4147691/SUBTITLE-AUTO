@@ -26,7 +26,7 @@ if (@($roots).Count -ne 1) { throw "UNEXPECTED_FFMPEG_ROOT_COUNT $(@($roots).Cou
 $ffDir = $roots[0].FullName
 $ffBin = Join-Path $ffDir "bin"
 $ffexe = Join-Path $ffBin "ffmpeg.exe"
-$versionOutput = & $ffexe -version | Select-Object -First 6 | Out-String
+$versionOutput = & $ffexe -version | Out-String
 if ($LASTEXITCODE -ne 0) { throw "FFMPEG_BUILD_VERSION_FAILED" }
 $versionOutput | Set-Content -Path (Join-Path $destination "FFMPEG_VERSION.txt") -Encoding UTF8
 Write-Output "FFMPEG_VERSION: $($versionOutput.Split([Environment]::NewLine)[0])"
