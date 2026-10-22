@@ -7,6 +7,7 @@ Component | License | Upstream
 ---|---|---
 faster-whisper 1.2.1 | MIT | https://github.com/SYSTRAN/faster-whisper
 CTranslate2 4.7.1 | MIT | https://github.com/OpenNMT/CTranslate2
+pywin32 312 (Explorer COM integration) | PSF and component notices | https://pypi.org/project/pywin32/312/
 PyAV 17.1.0 (binding) | BSD-3-Clause | https://github.com/PyAV-Org/PyAV
 FFmpeg, dynamically linked LGPL-only build | LGPL v3 or later | https://ffmpeg.org/legal.html
 Hugging Face Hub | Apache-2.0 | https://github.com/huggingface/huggingface_hub

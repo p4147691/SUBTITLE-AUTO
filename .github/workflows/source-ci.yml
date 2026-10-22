@@ -43,10 +43,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: First-run and CPU-GPU quickstart tests
-        run: python -m unittest test_distribution_bootstrap test_quickstart_cpu -v
+      - name: First-run, CPU-GPU and Explorer hotkey tests
+        run: python -m unittest test_distribution_bootstrap test_quickstart_cpu test_explorer_alt_s test_optional_engine_catalog -v
       - name: Install standalone CPU build dependencies
-        run: python -m pip install --disable-pip-version-check "faster-whisper==1.2.1" "ctranslate2==4.7.1" "av==17.1.0" "pyinstaller>=6,<7"
+        run: python -m pip install --disable-pip-version-check "faster-whisper==1.2.1" "ctranslate2==4.7.1" "av==17.1.0" "pyinstaller>=6,<7" "pywin32==312"
       - name: Replace PyPI wheel with verified LGPL-only PyAV/FFmpeg build
         shell: pwsh
         run: |
@@ -85,7 +85,7 @@ jobs:
       - name: Build standalone CPU executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name Subtitle-AUTO --distpath distribution/build_binary --workpath distribution/build_work --specpath distribution/build_spec --collect-all faster_whisper --collect-all ctranslate2 --collect-all av --collect-all huggingface_hub --collect-all tokenizers distribution/quickstart_cpu.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name Subtitle-AUTO --distpath distribution/build_binary --workpath distribution/build_work --specpath distribution/build_spec --collect-all faster_whisper --collect-all ctranslate2 --collect-all av --collect-all huggingface_hub --collect-all tokenizers --paths distribution --hidden-import hotkey_explorer --hidden-import engine_catalog --hidden-import win32com.client --hidden-import pythoncom --hidden-import pywintypes distribution/quickstart_cpu.py
           if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
       - name: Build binary Portable ZIP
         run: python distribution/build_cpu_portable.py --binary distribution/build_binary/Subtitle-AUTO.exe --output dist/Subtitle-AUTO-Portable-0.1.0.zip
@@ -118,6 +118,15 @@ jobs:
           if (!(Test-Path (Join-Path $target 'PRIVACY.md'))) { throw "Missing privacy notice" }
           if (!(Test-Path (Join-Path $target 'THIRD_PARTY_NOTICES.md'))) { throw "Missing third-party notices" }
           if (!(Test-Path (Join-Path $target 'QUICKSTART_LICENSE.txt'))) { throw "Missing Quickstart license" }
+          Write-Output 'HOTKEY_SHELL_COM_PACKAGING_CHECK_START'
+          $hotkey = Start-Process -FilePath $binary -ArgumentList @('--verify-alt-s-runtime') -PassThru
+          try { $hotkey | Wait-Process -Timeout 65 -ErrorAction Stop } catch {
+            Stop-Process -Id $hotkey.Id -Force -ErrorAction SilentlyContinue
+            throw "HOTKEY_DEPENDENCY_PACKAGING_TIMEOUT"
+          }
+          $hotkey.Refresh()
+          if ($hotkey.ExitCode -ne 0) { throw "HOTKEY_SHELL_COM_PACKAGING_FAILED" }
+          Write-Output 'HOTKEY_SHELL_COM_PACKAGING_PASS'
           $licenseReport = Join-Path $env:RUNNER_TEMP "SubtitleAutoLGPLRuntime.json"
           $env:SUBTITLE_AUTO_LGPL_REPORT = $licenseReport
           $licenseCheck = Start-Process -FilePath $binary -ArgumentList @('--verify-lgpl-runtime') -Wait -PassThru

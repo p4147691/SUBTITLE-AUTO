@@ -180,68 +180,266 @@ def transcribe(src: Path, model_name="tiny", language=None, on_status=print, dev
     return result
 
 
-def main_gui():
+def user_settings_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    return Path(base) / "Subtitle-AUTO" / "settings.json"
+
+
+def load_user_settings() -> dict:
+    try:
+        payload = json.loads(user_settings_path().read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return {}
+        return payload
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_user_settings(enabled: bool, startup: bool = False) -> None:
+    """No legacy config.json or model paths are changed."""
+    path = user_settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    fd, temporary = tempfile.mkstemp(prefix="settings.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"alt_s_enabled": bool(enabled), "start_with_windows": bool(startup)},
+                      f, ensure_ascii=False, indent=2)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def set_windows_autostart(enabled: bool) -> None:
+    """User opt-in only. Uses HKCU, never admin/system-wide settings."""
+    if os.name != "nt":
+        if enabled:
+            raise RuntimeError("Windows 전용 기능입니다.")
+        return
+    import winreg
+    import subprocess
+    keypath = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    value_name = "Subtitle-AUTO-Quickstart"
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, keypath, 0, winreg.KEY_SET_VALUE) as key:
+        if enabled:
+            executable = str(Path(sys.executable).resolve())
+            if getattr(sys, "frozen", False):
+                args = subprocess.list2cmdline([executable, "--minimized"])
+            else:
+                args = subprocess.list2cmdline([executable, str(Path(__file__).resolve()), "--minimized"])
+            winreg.SetValueEx(key, value_name, 0, winreg.REG_SZ, args)
+        else:
+            try:
+                winreg.DeleteValue(key, value_name)
+            except FileNotFoundError:
+                pass
+
+
+def main_gui(minimized: bool = False):
+    from hotkey_explorer import (
+        WindowsAltS, current_explorer_snapshot, collect_media, classify_targets
+    )
     app = tk.Tk()
     app.title("Subtitle-AUTO · GPU 우선 자막")
-    app.geometry("650x320")
+    app.geometry("690x380")
+    settings = load_user_settings()
     path_var = tk.StringVar()
     model_var = tk.StringVar(value="tiny")
     lang_var = tk.StringVar(value="auto")
     device_var = tk.StringVar(value="auto")
-    status = tk.StringVar(value="음원 또는 영상을 선택하세요. 원본과 기존 SRT는 보존합니다.")
+    hotkey_var = tk.BooleanVar(value=settings.get("alt_s_enabled", True))
+    startup_var = tk.BooleanVar(value=settings.get("start_with_windows", False))
+    status = tk.StringVar(value="파일을 선택하거나 탐색기에서 Alt+S를 누르세요. 원본·기존 SRT 보존.")
     root = ttk.Frame(app, padding=18)
     root.pack(fill=tk.BOTH, expand=True)
     ttk.Label(root, text="자막 생성할 파일").pack(anchor="w")
-    input_line=ttk.Frame(root);input_line.pack(fill=tk.X, pady=7)
-    ttk.Entry(input_line,textvariable=path_var).pack(side=tk.LEFT,fill=tk.X,expand=True)
-    ttk.Button(input_line,text="찾아보기",command=lambda:path_var.set(
-        filedialog.askopenfilename(filetypes=[("영상 / 음성", "*.mp4 *.mkv *.avi *.mov *.webm *.mp3 *.wav *.m4a *.flac *.ogg *.aac"),("모든 파일","*.*")]))).pack(side=tk.RIGHT)
-    settings=ttk.Frame(root);settings.pack(fill=tk.X,pady=12)
-    ttk.Label(settings,text="모델 (최초 실행시 다운로드)").pack(side=tk.LEFT)
-    ttk.Combobox(settings,textvariable=model_var,values=list(MODEL_NAMES),width=9,state="readonly").pack(side=tk.LEFT,padx=10)
-    ttk.Label(settings,text="언어").pack(side=tk.LEFT)
-    ttk.Combobox(settings,textvariable=lang_var,values=["auto","ko","ja","en"],width=7,state="readonly").pack(side=tk.LEFT,padx=10)
-    ttk.Label(settings,text="장치").pack(side=tk.LEFT)
-    ttk.Combobox(settings,textvariable=device_var,values=list(DEVICE_OPTIONS),width=8,state="readonly").pack(side=tk.LEFT,padx=8)
-    ttk.Label(root,textvariable=status,wraplength=595).pack(anchor="w",pady=20)
-    events=queue.Queue()
-    running=[False]
-    def work():
-        try:
-            transcribe(Path(path_var.get()),model_var.get(),None if lang_var.get()=="auto" else lang_var.get(),
-                       on_status=lambda msg:events.put(("status",msg)), device=device_var.get())
-        except Exception as exc:
-            events.put(("error",f"{type(exc).__name__}: {exc}"))
-        finally:events.put(("done",None))
-    def start():
-        if running[0]:return
-        selected=Path(path_var.get())
-        if not selected.is_file():
-            messagebox.showerror("파일 선택", "유효한 파일을 선택하세요.")
+    input_line = ttk.Frame(root)
+    input_line.pack(fill=tk.X, pady=7)
+    ttk.Entry(input_line, textvariable=path_var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+    ttk.Button(
+        input_line, text="찾아보기", command=lambda: path_var.set(
+            filedialog.askopenfilename(filetypes=[
+                ("영상 / 음성", "*.mp4 *.mkv *.avi *.mov *.webm *.mp3 *.wav *.m4a *.flac *.ogg *.aac"),
+                ("모든 파일", "*.*")])
+        )).pack(side=tk.RIGHT)
+    row = ttk.Frame(root)
+    row.pack(fill=tk.X, pady=10)
+    ttk.Label(row, text="Whisper 모델").pack(side=tk.LEFT)
+    ttk.Combobox(row, textvariable=model_var, values=list(MODEL_NAMES),
+                 width=8, state="readonly").pack(side=tk.LEFT, padx=7)
+    ttk.Label(row, text="언어").pack(side=tk.LEFT)
+    ttk.Combobox(row, textvariable=lang_var, values=["auto", "ko", "ja", "en"],
+                 width=7, state="readonly").pack(side=tk.LEFT, padx=7)
+    ttk.Label(row, text="장치").pack(side=tk.LEFT)
+    ttk.Combobox(row, textvariable=device_var, values=list(DEVICE_OPTIONS),
+                 width=8, state="readonly").pack(side=tk.LEFT, padx=7)
+    ttk.Label(root, textvariable=status, wraplength=650).pack(anchor="w", pady=12)
+
+    events = queue.Queue()
+    running = [False]
+    closing = [False]
+    alt_s = WindowsAltS()
+
+    def report(message):
+        events.put(("status", message))
+
+    def work(targets: tuple[Path, ...], model: str, language: str, device: str):
+        succeeded = 0
+        failed = 0
+        for idx, source in enumerate(targets, 1):
+            try:
+                if source.with_suffix(".srt").exists():
+                    report(f"기존 SRT 보존: {source.name}")
+                    continue
+                report(f"[{idx}/{len(targets)}] {source.name} 처리 중")
+                transcribe(source, model, None if language == "auto" else language,
+                           on_status=report, device=device)
+                succeeded += 1
+            except Exception as exc:
+                failed += 1
+                report(f"실패: {source.name} ({type(exc).__name__}: {exc})")
+        events.put(("summary", (succeeded, failed)))
+        events.put(("done", None))
+
+    def submit(targets: tuple[Path, ...], *, confirm: bool = False):
+        if running[0]:
+            status.set("이미 자막 생성 중입니다. 중복 실행하지 않았습니다.")
             return
-        if selected.with_suffix(".srt").exists():
-            messagebox.showwarning("기존 자막", "기존 SRT를 덮어쓰지 않습니다.")
+        if not targets:
+            status.set("처리할 영상·음성 파일이 없습니다.")
             return
-        running[0]=True
+        ready, skipped = classify_targets(targets)
+        if not ready:
+            status.set(f"대상 {len(targets)}개에 이미 SRT가 있어 전부 건너뛰었습니다.")
+            return
+        if confirm and not messagebox.askyesno(
+                "Alt+S 폴더 자막 생성",
+                f"영상·음성 {len(ready)}개에 자막을 생성할까요?\n"
+                f"기존 SRT {skipped}개는 건너뛰고 하위 폴더는 탐색하지 않습니다."):
+            return
+        path_var.set(str(ready[0]))
+        running[0] = True
         button.configure(state=tk.DISABLED)
-        threading.Thread(target=work,daemon=True).start()
-    button=ttk.Button(root,text="자막 생성 시작",command=start);button.pack(anchor="w")
+        thread = threading.Thread(
+            target=work,
+            args=(ready, model_var.get(), lang_var.get(), device_var.get()),
+            daemon=True,
+        )
+        thread.start()
+
+    def start():
+        selected = Path(path_var.get())
+        if not selected.is_file():
+            messagebox.showerror("파일 선택", "유효한 영상·음성 파일을 선택하세요.")
+            return
+        submit((selected,))
+
+    button = ttk.Button(root, text="자막 생성 시작", command=start)
+    button.pack(anchor="w", pady=4)
+
+    def show_optional_engines():
+        from engine_catalog import CATALOG, installation_plan
+        pieces = []
+        for key, entry in CATALOG.items():
+            plan = installation_plan(key)
+            pieces.append(
+                f"{entry.name} — 모델 약 {plan['approx_download_gb']:.2f}GB, {plan['license']}\n"
+                f"모델: {entry.repo_id}\n"
+                f"현재 상태: 실행 환경 미탑재 (선택 설치 개발 중)\n"
+                f"{entry.license_notice}"
+            )
+        messagebox.showinfo(
+            "추가 인식 엔진 — 선택 설치 안내",
+            "\n\n".join(pieces) +
+            "\n\nWhisper 외의 모델은 아직 다운로드·실행 버튼을 제공하지 않습니다. "
+            "모델 가중치만 받아도 바로 실행되지는 않기 때문입니다."
+        )
+
+    ttk.Button(root, text="추가 엔진 안내 (SenseVoice · Qwen)", command=show_optional_engines).pack(anchor="w", pady=4)
+    options = ttk.Frame(root)
+    options.pack(fill=tk.X, pady=10)
+    hotkey_checkbox = ttk.Checkbutton(options, variable=hotkey_var,
+                                     text="탐색기 Alt+S 사용 (프로그램 실행 중)")
+    hotkey_checkbox.pack(anchor="w")
+    startup_checkbox = ttk.Checkbutton(options, variable=startup_var,
+                                       text="Windows 로그인 시 최소화 실행 (선택)")
+    startup_checkbox.pack(anchor="w")
+
+    def apply_options(*_args):
+        if closing[0]:
+            return
+        if hotkey_var.get():
+            if not alt_s.register():
+                status.set("Alt+S가 다른 프로그램에서 사용 중이거나 등록할 수 없습니다. 버튼은 정상 사용 가능.")
+        else:
+            alt_s.unregister()
+            status.set("Alt+S 사용 해제. 자막 생성 버튼은 정상 동작합니다.")
+        old_startup = bool(settings.get("start_with_windows", False))
+        try:
+            if bool(startup_var.get()) != old_startup:
+                set_windows_autostart(bool(startup_var.get()))
+                settings["start_with_windows"] = bool(startup_var.get())
+            save_user_settings(hotkey_var.get(), settings.get("start_with_windows", False))
+        except (OSError, RuntimeError, PermissionError) as exc:
+            status.set(f"시작 프로그램 설정 실패: {exc}")
+            startup_var.set(old_startup)
+
+    hotkey_checkbox.configure(command=apply_options)
+    startup_checkbox.configure(command=apply_options)
+    if hotkey_var.get() and not alt_s.register():
+        status.set("Alt+S가 다른 프로그램에서 이미 사용 중입니다. 단축키를 해제하거나 버튼을 사용하세요.")
+    if minimized:
+        app.iconify()
+
+    def handle_hotkey():
+        try:
+            snap = current_explorer_snapshot()
+            if snap is None:
+                return  # No effect while unrelated application has focus.
+            targets = collect_media(snap)
+            if not targets:
+                status.set("현재 탐색기 폴더에서 영상·음성 파일을 찾지 못했습니다.")
+                return
+            app.deiconify()
+            app.lift()
+            submit(targets, confirm=True)
+        except (OSError, ValueError, RuntimeError) as exc:
+            status.set(f"Alt+S 확인 실패: {exc}")
+
     def poll():
+        if closing[0]:
+            return
+        if alt_s.poll():
+            handle_hotkey()
         try:
             while True:
-                kind,value=events.get_nowait()
-                if kind=="status":status.set(value)
-                elif kind=="error":status.set(value);messagebox.showerror("실패",value)
-                elif kind=="done":running[0]=False;button.configure(state=tk.NORMAL)
-        except queue.Empty:pass
-        app.after(100,poll)
+                kind, value = events.get_nowait()
+                if kind == "status":
+                    status.set(value)
+                elif kind == "summary":
+                    status.set(f"자막 생성 완료 {value[0]}개 / 실패 {value[1]}개")
+                elif kind == "done":
+                    running[0] = False
+                    button.configure(state=tk.NORMAL)
+        except queue.Empty:
+            pass
+        app.after(100, poll)
+
+    def close():
+        closing[0] = True
+        alt_s.unregister()
+        app.destroy()
+
+    app.protocol("WM_DELETE_WINDOW", close)
     poll()
     app.mainloop()
-
 
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--input",type=Path)
+    parser.add_argument("--minimized", action="store_true", help="Start GUI minimized")
+    parser.add_argument("--verify-alt-s-runtime", action="store_true",
+                        help="Verify Explorer COM hotkey dependencies without registering a hotkey")
     parser.add_argument("--verify-lgpl-runtime",action="store_true",
                         help="Verify the packaged FFmpeg DLLs are LGPL-only")
     parser.add_argument("--model",choices=list(MODEL_NAMES),default="tiny")
@@ -250,6 +448,13 @@ def main(argv=None):
     args=parser.parse_args(argv)
     if args.verify_lgpl_runtime:
         verify_lgpl_runtime()
+        return 0
+    if args.verify_alt_s_runtime:
+        from hotkey_explorer import WindowsAltS, current_explorer_snapshot
+        import pythoncom
+        import win32com.client
+        if os.name != "nt":
+            raise RuntimeError("ALT_S_REQUIRES_WINDOWS")
         return 0
     if args.input:
         def report_status(message):
@@ -260,7 +465,8 @@ def main(argv=None):
                     stream.write(message + "\n")
         transcribe(args.input,args.model,None if args.language=="auto" else args.language,
                    on_status=report_status,device=args.device)
-    else:main_gui()
+    else:
+        main_gui(minimized=args.minimized)
     return 0
 
 if __name__=="__main__":
