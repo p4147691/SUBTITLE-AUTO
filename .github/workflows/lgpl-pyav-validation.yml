@@ -1,0 +1,50 @@
+name: LGPL PyAV Windows wheel compatibility
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'distribution/build_lgpl_pyav.ps1'
+      - 'distribution/verify_lgpl_pyav.py'
+      - '.github/workflows/lgpl-pyav-validation.yml'
+  workflow_dispatch:
+jobs:
+  lgpl-binary-proof:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install app runtime dependency versions
+        run: python -m pip install --disable-pip-version-check "faster-whisper==1.2.1" "ctranslate2==4.7.1" "av==17.1.0" "pyinstaller>=6,<7"
+      - name: Build PyAV source against hash-locked LGPL FFmpeg DLLs
+        shell: pwsh
+        run: |
+          ./distribution/build_lgpl_pyav.ps1
+      - name: Smoke test bundled FFmpeg decoder on a generated Windows WAV
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $wav = Join-Path $env:RUNNER_TEMP "PyAV-LGPL-Acceptance.wav"
+          $speech = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $speech.SetOutputToWaveFile($wav)
+          $speech.Speak("Subtitle Auto performs accurate local transcription.")
+          $speech.Dispose()
+          & python distribution/quickstart_cpu.py --input $wav --model tiny --language en --device cpu
+          if ($LASTEXITCODE -ne 0) { throw "LGPL_PYAV_CPU_SPEECH_TO_SRT_FAILED" }
+          $srt = [System.IO.Path]::ChangeExtension($wav, ".srt")
+          if (!(Test-Path $srt)) { throw "LGPL_PYAV_MISSING_SRT" }
+          $content = [IO.File]::ReadAllText($srt, [Text.Encoding]::UTF8)
+          if ($content -notmatch '-->') { throw "LGPL_PYAV_INVALID_SRT" }
+          Write-Output "LGPL_PYAV_CPU_E2E_PASS"
+      - name: Upload audited LGPL wheel and build evidence (not a public Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-auto-lgpl-pyav-proof
+          path: |
+            distribution/lgpl-build-output/wheelhouse/*.whl
+            distribution/lgpl-build-output/FFMPEG_BUILD_CONFIGURATION.txt
+            distribution/lgpl-build-output/LGPL_PYAV_PROVENANCE.json
+          if-no-files-found: error
+          retention-days: 7
