@@ -35,7 +35,7 @@ if ($buildinfo -notmatch "--enable-shared") { throw "FFMPEG_IS_NOT_SHARED" }
 $buildinfo | Set-Content -Path (Join-Path $destination "FFMPEG_BUILD_CONFIGURATION.txt") -Encoding UTF8
 Write-Output "FFMPEG_LGPL_ONLY_SHARED_CONFIGURATION_PASS"
 $env:PATH = "$ffBin;$env:PATH"
-& python -m pip install --disable-pip-version-check --quiet "Cython>=3,<4" "setuptools>=70,<90" wheel delvewheel "numpy>=1.26,<3"
+& python -m pip install --disable-pip-version-check --quiet "Cython==3.1.6" "setuptools>=70,<90" wheel delvewheel "numpy>=1.26,<3"
 if ($LASTEXITCODE -ne 0) { throw "PYAV_BUILD_DEPENDENCY_INSTALL_FAILED" }
 $pyav = Join-Path $destination "PyAV-v17.1.0-source"
 if (!(Test-Path $pyav) ) {
