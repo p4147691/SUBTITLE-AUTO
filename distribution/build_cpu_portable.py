@@ -8,8 +8,10 @@ def build(executable: Path, output: Path):
         raise FileNotFoundError(executable)
     output.parent.mkdir(parents=True,exist_ok=True)
     with ZipFile(output,"w",ZIP_DEFLATED) as zipfile:
-        zipfile.write(executable,"Subtitle-AUTO-Portable/Subtitle-AUTO-CPU.exe")
+        zipfile.write(executable,"Subtitle-AUTO-Portable/Subtitle-AUTO.exe")
         zipfile.write(ROOT/"README.md","Subtitle-AUTO-Portable/README.md")
+        zipfile.write(ROOT/"distribution"/"THIRD_PARTY_NOTICES.md","Subtitle-AUTO-Portable/THIRD_PARTY_NOTICES.md")
+        zipfile.write(ROOT/"distribution"/"PRIVACY.md","Subtitle-AUTO-Portable/PRIVACY.md")
         zipfile.write(ROOT/"distribution"/"MODEL_LICENSE_REVIEW.md","Subtitle-AUTO-Portable/MODEL_LICENSE_REVIEW.md")
     return output
 if __name__=="__main__":

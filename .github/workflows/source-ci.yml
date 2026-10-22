@@ -72,10 +72,10 @@ jobs:
       - name: Build standalone CPU executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name Subtitle-AUTO-CPU --distpath distribution/build_binary --workpath distribution/build_work --specpath distribution/build_spec --collect-all faster_whisper --collect-all ctranslate2 --collect-all av --collect-all huggingface_hub --collect-all tokenizers distribution/quickstart_cpu.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name Subtitle-AUTO --distpath distribution/build_binary --workpath distribution/build_work --specpath distribution/build_spec --collect-all faster_whisper --collect-all ctranslate2 --collect-all av --collect-all huggingface_hub --collect-all tokenizers distribution/quickstart_cpu.py
           if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
       - name: Build binary Portable ZIP
-        run: python distribution/build_cpu_portable.py --binary distribution/build_binary/Subtitle-AUTO-CPU.exe --output dist/Subtitle-AUTO-CPU-Portable-preview.zip
+        run: python distribution/build_cpu_portable.py --binary distribution/build_binary/Subtitle-AUTO.exe --output dist/Subtitle-AUTO-Portable-0.1.0.zip
       - name: Build Inno Setup preview
         shell: pwsh
         run: |
@@ -87,7 +87,7 @@ jobs:
       - name: Clean Windows installer install/uninstall smoke
         shell: pwsh
         run: |
-          $setup = Join-Path (Get-Location) 'distribution/dist/Subtitle-AUTO-Setup-0.1.0-preview.exe'
+          $setup = Join-Path (Get-Location) 'distribution/dist/Subtitle-AUTO-Setup-0.1.0.exe'
           if (!(Test-Path $setup)) { throw "Installer artifact missing" }
           $target = Join-Path $env:RUNNER_TEMP 'SubtitleAutoCleanInstall'
           Write-Output 'PHASE_1_INSTALL_START'
@@ -100,8 +100,10 @@ jobs:
           if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
           Write-Output 'PHASE_1_INSTALL_PASS'
           if (!(Test-Path (Join-Path $target 'distribution/bootstrap.py'))) { throw "Missing bootstrap after installation" }
-          $binary = Join-Path $target 'Subtitle-AUTO-CPU.exe'
+          $binary = Join-Path $target 'Subtitle-AUTO.exe'
           if (!(Test-Path $binary)) { throw "Missing standalone CPU executable" }
+          if (!(Test-Path (Join-Path $target 'PRIVACY.md'))) { throw "Missing privacy notice" }
+          if (!(Test-Path (Join-Path $target 'THIRD_PARTY_NOTICES.md'))) { throw "Missing third-party notices" }
           Write-Output 'PHASE_2_EXE_HELP_START'
           $help = Start-Process -FilePath $binary -ArgumentList @('--help') -PassThru
           try { $help | Wait-Process -Timeout 90 -ErrorAction Stop } catch {
@@ -160,7 +162,7 @@ jobs:
       - name: Upload preview artifacts (not a release)
         uses: actions/upload-artifact@v4
         with:
-          name: subtitle-auto-source-only-preview
+          name: subtitle-auto-windows-0.1.0
           path: |
             dist/*.zip
             distribution/dist/*.exe
