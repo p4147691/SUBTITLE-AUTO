@@ -33,6 +33,30 @@ FORMATS = {".mp4", ".mkv", ".avi", ".mov", ".webm",
            ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac"}
 MAX_CUE_SECONDS = 5.5
 MAX_CUE_CHARS = 38
+DEVICE_OPTIONS = ("auto", "cuda", "cpu")
+
+
+def choose_backend(requested="auto"):
+    """GPU-first; auto falls back only if CUDA is unavailable or cannot initialize."""
+    if requested not in DEVICE_OPTIONS:
+        raise ValueError(f"Unknown device mode: {requested}")
+    if requested == "cpu":
+        return [("cpu", "int8")]
+    try:
+        import ctranslate2
+        supported = ctranslate2.get_supported_compute_types("cuda")
+        compute = "float16" if "float16" in supported else "int8_float16" if "int8_float16" in supported else "int8"
+        available = bool(supported)
+    except (RuntimeError, OSError, ValueError) as exc:
+        if requested == "cuda":
+            raise RuntimeError(f"CUDA 사용 불가: {exc}") from exc
+        available = False
+        compute = "float16"
+    if requested == "cuda":
+        if not available:
+            raise RuntimeError("지원되는 CUDA 장치가 없습니다. CPU 또는 자동을 선택하세요.")
+        return [("cuda", compute)]
+    return ([("cuda", compute), ("cpu", "int8")] if available else [("cpu", "int8")])
 
 
 def model_cache() -> Path:
@@ -67,7 +91,7 @@ def write_srt(src: Path, cues: list[tuple[float, float, str]]) -> Path:
     return target
 
 
-def transcribe(src: Path, model_name="tiny", language=None, on_status=print):
+def transcribe(src: Path, model_name="tiny", language=None, on_status=print, device="auto"):
     if src.suffix.lower() not in FORMATS:
         raise ValueError(f"지원하지 않는 확장자: {src.suffix}")
     if not src.is_file():
@@ -80,9 +104,25 @@ def transcribe(src: Path, model_name="tiny", language=None, on_status=print):
     on_status(f"모델 {model_name}: 최초 실행 시 다운로드할 수 있습니다.")
     model_cache().mkdir(parents=True, exist_ok=True)
     from faster_whisper import WhisperModel
-    model = WhisperModel(model_name, device="cpu", compute_type="int8",
-                         download_root=str(model_cache()))
-    on_status("음성 인식 진행 중... (CPU)")
+    if device not in DEVICE_OPTIONS:
+        raise ValueError("Unknown device mode")
+    choices = choose_backend(device)
+    model = None
+    selected = None
+    for backend, compute in choices:
+        on_status(f"모델 준비: {backend.upper()} / {compute}")
+        try:
+            model = WhisperModel(model_name, device=backend, compute_type=compute,
+                                 download_root=str(model_cache()))
+            selected = backend
+            break
+        except (RuntimeError, OSError) as exc:
+            if device != "auto" or backend != "cuda":
+                raise
+            on_status(f"GPU 초기화 실패, CPU로 전환: {type(exc).__name__}")
+    if model is None:
+        raise RuntimeError("실행 가능한 CPU/GPU 엔진을 준비하지 못했습니다.")
+    on_status(f"음성 인식 진행 중... ({selected.upper()})")
     segs, _info = model.transcribe(
         str(src), beam_size=3, language=language, vad_filter=False,
         condition_on_previous_text=False, word_timestamps=False)
@@ -105,11 +145,12 @@ def transcribe(src: Path, model_name="tiny", language=None, on_status=print):
 
 def main_gui():
     app = tk.Tk()
-    app.title("Subtitle-AUTO · CPU 간편 자막")
+    app.title("Subtitle-AUTO · GPU 우선 자막")
     app.geometry("650x320")
     path_var = tk.StringVar()
     model_var = tk.StringVar(value="tiny")
     lang_var = tk.StringVar(value="auto")
+    device_var = tk.StringVar(value="auto")
     status = tk.StringVar(value="음원 또는 영상을 선택하세요. 원본과 기존 SRT는 보존합니다.")
     root = ttk.Frame(app, padding=18)
     root.pack(fill=tk.BOTH, expand=True)
@@ -123,13 +164,15 @@ def main_gui():
     ttk.Combobox(settings,textvariable=model_var,values=list(MODEL_NAMES),width=9,state="readonly").pack(side=tk.LEFT,padx=10)
     ttk.Label(settings,text="언어").pack(side=tk.LEFT)
     ttk.Combobox(settings,textvariable=lang_var,values=["auto","ko","ja","en"],width=7,state="readonly").pack(side=tk.LEFT,padx=10)
+    ttk.Label(settings,text="장치").pack(side=tk.LEFT)
+    ttk.Combobox(settings,textvariable=device_var,values=list(DEVICE_OPTIONS),width=8,state="readonly").pack(side=tk.LEFT,padx=8)
     ttk.Label(root,textvariable=status,wraplength=595).pack(anchor="w",pady=20)
     events=queue.Queue()
     running=[False]
     def work():
         try:
             transcribe(Path(path_var.get()),model_var.get(),None if lang_var.get()=="auto" else lang_var.get(),
-                       on_status=lambda msg:events.put(("status",msg)))
+                       on_status=lambda msg:events.put(("status",msg)), device=device_var.get())
         except Exception as exc:
             events.put(("error",f"{type(exc).__name__}: {exc}"))
         finally:events.put(("done",None))
@@ -163,10 +206,11 @@ def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--input",type=Path)
     parser.add_argument("--model",choices=list(MODEL_NAMES),default="tiny")
+    parser.add_argument("--device",choices=DEVICE_OPTIONS,default="auto")
     parser.add_argument("--language",choices=("auto","ko","ja","en"),default="auto")
     args=parser.parse_args(argv)
     if args.input:
-        transcribe(args.input,args.model,None if args.language=="auto" else args.language)
+        transcribe(args.input,args.model,None if args.language=="auto" else args.language,device=args.device)
     else:main_gui()
     return 0
 

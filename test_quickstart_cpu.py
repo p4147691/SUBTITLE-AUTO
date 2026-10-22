@@ -14,6 +14,31 @@ cpu=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cpu)
 
 class QuickstartTests(unittest.TestCase):
+    def test_cpu_explicit(self):
+        self.assertEqual(cpu.choose_backend("cpu"), [("cpu", "int8")])
+
+    def test_auto_prefers_cuda(self):
+        fake = types.ModuleType("ctranslate2")
+        fake.get_supported_compute_types = lambda device: {"float16", "int8"}
+        with mock.patch.dict(sys.modules, {"ctranslate2": fake}):
+            self.assertEqual(cpu.choose_backend("auto")[0], ("cuda", "float16"))
+            self.assertEqual(cpu.choose_backend("auto")[-1], ("cpu", "int8"))
+
+    def test_auto_falls_back_on_cuda_probe_failure(self):
+        fake = types.ModuleType("ctranslate2")
+        fake.get_supported_compute_types = lambda device: (_ for _ in ()).throw(RuntimeError("No GPU"))
+        with mock.patch.dict(sys.modules, {"ctranslate2": fake}):
+            self.assertEqual(cpu.choose_backend("auto"), [("cpu", "int8")])
+            with self.assertRaises(RuntimeError):
+                cpu.choose_backend("cuda")
+
+    def test_cli_gpu_failure_does_not_switch_to_cpu(self):
+        fake = types.ModuleType("ctranslate2")
+        fake.get_supported_compute_types = lambda device: (_ for _ in ()).throw(RuntimeError("No GPU"))
+        with mock.patch.dict(sys.modules, {"ctranslate2": fake}):
+            with self.assertRaises(RuntimeError):
+                cpu.choose_backend("cuda")
+
     def test_srt_timestamp(self):
         self.assertEqual(cpu.as_srt_time(3723.123),"01:02:03,123")
         self.assertEqual(cpu.as_srt_time(-1),"00:00:00,000")
