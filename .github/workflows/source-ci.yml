@@ -46,7 +46,16 @@ jobs:
       - name: First-run and CPU-GPU quickstart tests
         run: python -m unittest test_distribution_bootstrap test_quickstart_cpu -v
       - name: Install standalone CPU build dependencies
-        run: python -m pip install --disable-pip-version-check "faster-whisper>=1.1,<2" "pyinstaller>=6,<7"
+        run: python -m pip install --disable-pip-version-check "faster-whisper>=1.1,<2" "av==17.1.0" "pyinstaller>=6,<7"
+      - name: Check Faster-Whisper and PyAV decoder compatibility
+        shell: pwsh
+        run: |
+          @'
+          import av, faster_whisper
+          from faster_whisper.audio import decode_audio
+          assert av.__version__ == "17.1.0", av.__version__
+          print("PYAV_COMPATIBILITY_PASS", av.__version__)
+          '@ | python -
       - name: Prepare Whisper tiny in user cache before inference
         shell: pwsh
         run: |
