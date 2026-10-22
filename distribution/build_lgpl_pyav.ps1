@@ -7,8 +7,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $destination = Join-Path $root $OutputDirectory
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 $archive = Join-Path $destination "ffmpeg-lgpl-shared-8.1.zip"
-$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip"
-$expected = "0a6aef473350e9ff4c34302fa0cb1286d409b56c8f228367a4819ebb3ac19e9f"
+$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n8.1.3-9-g29e619e767-win64-lgpl-shared-8.1.zip"
+$expected = "3e47bda1607740550141e37c0e49d1e5182b34699f15adfd137ee266d346811a"
 if (!(Test-Path $archive)) {
   Invoke-WebRequest -Uri $uri -OutFile $archive -MaximumRedirection 8
 }
