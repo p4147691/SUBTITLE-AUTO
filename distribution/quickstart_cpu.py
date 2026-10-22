@@ -47,7 +47,7 @@ def choose_backend(requested="auto"):
         supported = ctranslate2.get_supported_compute_types("cuda")
         compute = "float16" if "float16" in supported else "int8_float16" if "int8_float16" in supported else "int8"
         available = bool(supported)
-    except (RuntimeError, OSError, ValueError) as exc:
+    except (ImportError, RuntimeError, OSError, ValueError) as exc:
         if requested == "cuda":
             raise RuntimeError(f"CUDA 사용 불가: {exc}") from exc
         available = False

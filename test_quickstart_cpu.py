@@ -76,7 +76,7 @@ class QuickstartTests(unittest.TestCase):
             f.write_bytes(b"wav")
             with mock.patch.dict(sys.modules,{"faster_whisper":lib}):
                 with mock.patch.object(cpu,"model_cache",return_value=pathlib.Path(td)/"models"):
-                    result=cpu.transcribe(f,model_name="tiny")
+                    result=cpu.transcribe(f,model_name="tiny",device="cpu")
             s=result.read_text(encoding="utf-8")
             self.assertIn("00:00:00,500 --> 00:00:01,700",s)
             self.assertIn("This is a test",s)
