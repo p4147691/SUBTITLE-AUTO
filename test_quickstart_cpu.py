@@ -14,6 +14,47 @@ cpu=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cpu)
 
 class QuickstartTests(unittest.TestCase):
+    def test_packaged_lgpl_runtime_detects_only_lgpl_shared(self):
+        import json
+        core = types.ModuleType("av._core")
+        core.library_meta = {"libavcodec": {
+            "license": "LGPL version 3 or later",
+            "configuration": "--enable-shared --disable-static --disable-libx264 --disable-libx265",
+        }}
+        av_fake = types.ModuleType("av")
+        av_fake.__version__ = "17.1.0"
+        with tempfile.TemporaryDirectory() as td:
+            output = pathlib.Path(td) / "audit.json"
+            with mock.patch.dict(sys.modules, {"av": av_fake, "av._core": core}):
+                with mock.patch.dict(os.environ, {"SUBTITLE_AUTO_LGPL_REPORT": str(output)}):
+                    report = cpu.verify_lgpl_runtime()
+            self.assertTrue(report["lgpl_verified"])
+            self.assertTrue(json.loads(output.read_text(encoding="utf-8"))["lgpl_verified"])
+
+    def test_packaged_lgpl_runtime_rejects_gpl_codec(self):
+        core = types.ModuleType("av._core")
+        core.library_meta = {"libavcodec": {
+            "license": "LGPL version 3 or later",
+            "configuration": "--enable-shared --enable-libx264",
+        }}
+        av_fake = types.ModuleType("av")
+        av_fake.__version__ = "17.1.0"
+        with mock.patch.dict(sys.modules, {"av": av_fake, "av._core": core}):
+            with self.assertRaisesRegex(RuntimeError, "LGPL_GATE"):
+                cpu.verify_lgpl_runtime()
+
+    def test_packaged_lgpl_runtime_rejects_undocumented_ffmpeg(self):
+        core = types.ModuleType("av._core")
+        core.library_meta = {"libavcodec": {
+            "license": "GPL version 3 or later",
+            "configuration": "--enable-shared",
+        }}
+        av_fake = types.ModuleType("av")
+        av_fake.__version__ = "17.1.0"
+        with mock.patch.dict(sys.modules, {"av": av_fake, "av._core": core}):
+            with self.assertRaisesRegex(RuntimeError, "LGPL_GATE"):
+                cpu.verify_lgpl_runtime()
+
     def test_cpu_explicit(self):
         self.assertEqual(cpu.choose_backend("cpu"), [("cpu", "int8")])
 

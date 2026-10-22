@@ -59,6 +59,37 @@ def choose_backend(requested="auto"):
     return ([("cuda", compute), ("cpu", "int8")] if available else [("cpu", "int8")])
 
 
+def verify_lgpl_runtime():
+    """Inspect FFmpeg libraries actually loaded inside the packaged program."""
+    import json
+    from av._core import library_meta
+    from av import __version__ as pyav_version
+    flags = ("--enable-gpl", "--enable-nonfree", "--enable-libx264",
+             "--enable-libx265", "--enable-libxvid")
+    report = {
+        "pyav": pyav_version,
+        "libraries": {},
+        "lgpl_verified": False,
+    }
+    if pyav_version != "17.1.0" or not library_meta:
+        raise RuntimeError("UNEXPECTED_PYAV_RUNTIME")
+    for name, item in library_meta.items():
+        lic = str(item.get("license", ""))
+        config = str(item.get("configuration", ""))
+        if "LGPL" not in lic or any(flag in config for flag in flags):
+            raise RuntimeError(f"FFMPEG_LGPL_GATE_FAILED:{name}:{lic}")
+        if "--enable-shared" not in config:
+            raise RuntimeError(f"FFMPEG_NOT_SHARED:{name}")
+        report["libraries"][name] = {
+            "license": lic, "config": config,
+        }
+    report["lgpl_verified"] = True
+    path = os.environ.get("SUBTITLE_AUTO_LGPL_REPORT")
+    if path:
+        Path(path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report
+
+
 def model_cache() -> Path:
     """Cache belongs to the user, not Program Files or source checkout."""
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
@@ -211,10 +242,15 @@ def main_gui():
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--input",type=Path)
+    parser.add_argument("--verify-lgpl-runtime",action="store_true",
+                        help="Verify the packaged FFmpeg DLLs are LGPL-only")
     parser.add_argument("--model",choices=list(MODEL_NAMES),default="tiny")
     parser.add_argument("--device",choices=DEVICE_OPTIONS,default="auto")
     parser.add_argument("--language",choices=("auto","ko","ja","en"),default="auto")
     args=parser.parse_args(argv)
+    if args.verify_lgpl_runtime:
+        verify_lgpl_runtime()
+        return 0
     if args.input:
         def report_status(message):
             print(message, flush=True)

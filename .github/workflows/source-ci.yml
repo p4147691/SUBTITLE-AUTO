@@ -47,16 +47,29 @@ jobs:
         run: python -m unittest test_distribution_bootstrap test_quickstart_cpu -v
       - name: Install standalone CPU build dependencies
         run: python -m pip install --disable-pip-version-check "faster-whisper==1.2.1" "ctranslate2==4.7.1" "av==17.1.0" "pyinstaller>=6,<7"
-      - name: Check Faster-Whisper and PyAV decoder compatibility
+      - name: Replace PyPI wheel with verified LGPL-only PyAV/FFmpeg build
+        shell: pwsh
+        run: |
+          ./distribution/build_lgpl_pyav.ps1
+      - name: Check LGPL-only FFmpeg and Faster-Whisper decoder
         shell: pwsh
         run: |
           @'
           import av, faster_whisper, ctranslate2
+          from av._core import library_meta
           from faster_whisper.audio import decode_audio
           assert av.__version__ == "17.1.0", av.__version__
           assert ctranslate2.__version__ == "4.7.1", ctranslate2.__version__
-          print("ASR_BINARY_COMPATIBILITY_PASS", av.__version__, ctranslate2.__version__)
+          for name, cfg in library_meta.items():
+              assert "LGPL" in str(cfg["license"]), (name, cfg["license"])
+              opts = str(cfg["configuration"])
+              assert "--enable-gpl" not in opts and "--enable-nonfree" not in opts
+              assert "--enable-libx264" not in opts and "--enable-libx265" not in opts
+              assert "--enable-shared" in opts
+          print("LGPL_RELEASE_RUNTIME_BINARY_PASS")
           '@ | python -
+      - name: Package pinned FFmpeg/PyAV LGPL corresponding sources
+        run: python distribution/build_lgpl_source_bundle.py
       - name: Prepare Whisper tiny in user cache before inference
         shell: pwsh
         run: |
@@ -104,6 +117,14 @@ jobs:
           if (!(Test-Path $binary)) { throw "Missing standalone CPU executable" }
           if (!(Test-Path (Join-Path $target 'PRIVACY.md'))) { throw "Missing privacy notice" }
           if (!(Test-Path (Join-Path $target 'THIRD_PARTY_NOTICES.md'))) { throw "Missing third-party notices" }
+          if (!(Test-Path (Join-Path $target 'QUICKSTART_LICENSE.txt'))) { throw "Missing Quickstart license" }
+          $licenseReport = Join-Path $env:RUNNER_TEMP "SubtitleAutoLGPLRuntime.json"
+          $env:SUBTITLE_AUTO_LGPL_REPORT = $licenseReport
+          $licenseCheck = Start-Process -FilePath $binary -ArgumentList @('--verify-lgpl-runtime') -Wait -PassThru
+          if ($licenseCheck.ExitCode -ne 0 -or !(Test-Path $licenseReport)) { throw "Packaged LGPL runtime verification failed" }
+          $licenseData = Get-Content $licenseReport -Raw | ConvertFrom-Json
+          if (!$licenseData.lgpl_verified) { throw "Packaged FFmpeg library is not LGPL" }
+          Write-Output 'PACKAGED_LGPL_BINARY_GATE_PASS'
           Write-Output 'PHASE_2_EXE_HELP_START'
           $help = Start-Process -FilePath $binary -ArgumentList @('--help') -PassThru
           try { $help | Wait-Process -Timeout 90 -ErrorAction Stop } catch {
@@ -159,12 +180,15 @@ jobs:
           $proc = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
           if ($proc.ExitCode -ne 0) { throw "Uninstall failed: $($proc.ExitCode)" }
           if (Test-Path (Join-Path $target 'subtitle_client.py')) { throw "Uninstall left application source" }
-      - name: Upload preview artifacts (not a release)
+      - name: Upload LGPL build proof plus Windows distribution artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: subtitle-auto-windows-0.1.0
+          name: subtitle-auto-windows-lgpl-0.1.0-validation
           path: |
             dist/*.zip
             distribution/dist/*.exe
+            distribution/lgpl-build-output/LGPL_PYAV_PROVENANCE.json
+            distribution/lgpl-build-output/FFMPEG_BUILD_CONFIGURATION.txt
+            distribution/lgpl-build-output/FFMPEG_VERSION.txt
           if-no-files-found: error
           retention-days: 7
