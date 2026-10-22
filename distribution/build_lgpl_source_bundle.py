@@ -17,14 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "dist"
 BUILD = ROOT / "distribution" / "lgpl-build-output"
 SOURCES = (
-    ("FFmpeg-source-c8de997cb13890d015bd0ffee5cba5471fb50c31.tar.gz",
-     "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/c8de997cb13890d015bd0ffee5cba5471fb50c31"),
+    ("FFmpeg-source-29e619e767cde9045a75c29bc9a8278ae7b3a98b.tar.gz",
+     "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/29e619e767cde9045a75c29bc9a8278ae7b3a98b"),
     ("PyAV-source-97241598792f4c980c32458187154c7c999d68b3.zip",
      "https://codeload.github.com/PyAV-Org/PyAV/zip/97241598792f4c980c32458187154c7c999d68b3"),
-    ("FFmpeg-Builds-recipe-937868360a21d711ec94a33f5591d345ad9b7754.zip",
-     "https://codeload.github.com/BtbN/FFmpeg-Builds/zip/937868360a21d711ec94a33f5591d345ad9b7754"),
+    ("FFmpeg-Builds-recipe-6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b.zip",
+     "https://codeload.github.com/BtbN/FFmpeg-Builds/zip/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b"),
 )
-EXPECTED_FFMPEG = "n8.1.3-20-gc8de997cb1-20261021"
+EXPECTED_FFMPEG = "n8.1.3-9-g29e619e767-20260930"
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -67,11 +67,11 @@ def build() -> Path:
 
 The distributed PyAV 17.1.0 wheel was built from commit
 97241598792f4c980c32458187154c7c999d68b3 against LGPL-only
-FFmpeg with exact source commit c8de997cb13890d015bd0ffee5cba5471fb50c31.
+FFmpeg with exact source commit 29e619e767cde9045a75c29bc9a8278ae7b3a98b.
 
-- FFmpeg source: FFmpeg-source-c8de997cb13890d015bd0ffee5cba5471fb50c31.tar.gz
+- FFmpeg source: FFmpeg-source-29e619e767cde9045a75c29bc9a8278ae7b3a98b.tar.gz
 - PyAV original source: PyAV-source-97241598792f4c980c32458187154c7c999d68b3.zip
-- FFmpeg build recipes/patches: FFmpeg-Builds-recipe-937868360a21d711ec94a33f5591d345ad9b7754.zip
+- FFmpeg build recipes/patches: FFmpeg-Builds-recipe-6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b.zip
 - Configure flags: FFMPEG_BUILD_CONFIGURATION.txt
 - Runtime library-license verification: LGPL_PYAV_PROVENANCE.json
 - Rebuild procedure: build_lgpl_pyav.ps1
