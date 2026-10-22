@@ -85,7 +85,10 @@ def write_srt(src: Path, cues: list[tuple[float, float, str]]) -> Path:
             for i, (start, end, txt) in enumerate(cues, 1):
                 stream.write(f"{i}\n{as_srt_time(start)} --> {as_srt_time(end)}\n{txt.strip()}\n\n")
         # Windows can publish via hardlink only if destination does not already exist.
-        os.link(tmp, target)
+        # On Windows os.rename refuses an existing destination. It also
+        # publishes the complete subtitle in one operation without a
+        # second hardlink, which can be held open by AV/scanner hooks.
+        os.rename(tmp, target)
     finally:
         Path(tmp).unlink(missing_ok=True)
     return target
@@ -140,6 +143,7 @@ def transcribe(src: Path, model_name="tiny", language=None, on_status=print, dev
         raise RuntimeError("인식된 음성이 없어 SRT를 생성하지 않았습니다.")
     if output.exists():
         raise FileExistsError("기존 SRT가 생성 중 나타났습니다.")
+    on_status(f"인식 완료: {len(cues)}개 구간, SRT 저장 시작")
     result = write_srt(src, cues)
     on_status(f"완료: {result.name} / {len(cues)}개")
     return result
