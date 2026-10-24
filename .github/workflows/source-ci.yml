@@ -25,6 +25,8 @@ jobs:
           '@ | python -
       - name: Whisper quality presets, selective ASR review and OCR GPU guard
         run: python -m unittest -q test_asr_quality_presets test_asr_crosscheck test_ocr_acceleration_policy
+      - name: LGPL wheel cache integrity and fail-closed tests
+        run: python -m unittest -q test_lgpl_wheel_cache
       - name: No models, secrets, media or environments tracked
         shell: pwsh
         run: |
@@ -49,7 +51,14 @@ jobs:
         run: python -m unittest test_distribution_bootstrap test_quickstart_cpu -v
       - name: Install standalone CPU build dependencies
         run: python -m pip install --disable-pip-version-check "faster-whisper==1.2.1" "ctranslate2==4.7.1" "av==17.1.0" "pyinstaller>=6,<7"
-      - name: Replace PyPI wheel with verified LGPL-only PyAV/FFmpeg build
+      - name: Restore previously verified LGPL PyAV wheel
+        uses: actions/cache@v4
+        with:
+          # A cache restores only an already-verified binary; every run still
+          # checks FFmpeg's pinned SHA and the imported wheel's LGPL flags.
+          path: distribution/lgpl-build-output/wheelhouse
+          key: lgpl-pyav-v1-${{ runner.os }}-py312-${{ hashFiles('distribution/build_lgpl_pyav.ps1', 'distribution/lgpl_wheel_cache.py', 'distribution/verify_lgpl_pyav.py') }}
+      - name: Build or reuse verified LGPL-only PyAV/FFmpeg wheel
         shell: pwsh
         run: |
           ./distribution/build_lgpl_pyav.ps1
@@ -94,8 +103,13 @@ jobs:
       - name: Build Inno Setup preview
         shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
           $iscc = [System.IO.Path]::Combine([Environment]::GetFolderPath('ProgramFilesX86'),'Inno Setup 6','ISCC.exe')
+          if (!(Test-Path $iscc)) {
+            # Windows hosted runners usually have Inno Setup preinstalled.
+            # Install only when the verified compiler is actually unavailable.
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup fallback install failed" }
+          }
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler missing" }
           & $iscc distribution/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed" }
