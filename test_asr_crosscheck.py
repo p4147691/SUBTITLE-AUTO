@@ -83,6 +83,20 @@ class ASRCrosscheckTests(unittest.TestCase):
         self.assertEqual(1, len(windows))
         self.assertFalse(windows[0]["isolated"])
 
+    def test_overlapping_speech_keeps_review_flag_without_loading_models(self):
+        cues = [(0, 2.0, "Unclear"), (2.1, 3.0, "Another")]
+        signals = [{"start": 0, "end": 2, "avg_logprob": -1.3}]
+        with patch("asr_crosscheck._run_peer") as peer:
+            result, report = review_cues(
+                self.media, cues, signals, 25.0, {}, self.snapshot
+            )
+        peer.assert_not_called()
+        self.assertEqual(cues, result)
+        self.assertEqual("flagged_only", report["status"])
+        self.assertEqual(0, report["reviewed"])
+        self.assertEqual(1, report["flagged_total"])
+        self.assertEqual("neighbors_review_only", report["windows"][0]["decision"])
+
     def test_two_peer_consensus_only(self):
         p, reason = consensus("kool cattt", "A small cat", "A small cat!",
                               isolated=True)

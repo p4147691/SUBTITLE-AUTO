@@ -251,19 +251,36 @@ def review_cues(
 ) -> tuple[list[tuple[float, float, str]], dict[str, Any]]:
     windows = choose_windows(cues, source_segments, duration,
                              detected_language=detected_language)
+    isolated = [win for win in windows if win["isolated"]]
     result: dict[str, Any] = {
-        "schema": 1, "mode": "precise", "reviewed": len(windows), "corrected": 0,
+        "schema": 1, "mode": "precise", "reviewed": len(isolated), "corrected": 0,
+        "flagged_total": len(windows),
+        "skipped_overlapping_speech": len(windows) - len(isolated),
         "model_order": list(_REVIEW_BACKENDS), "windows": [],
     }
     if not windows:
         result["status"] = "no_suspicious_cues"
+        return list(cues), result
+    if not isolated:
+        # Voice overlap makes an isolated clip's text incomparable to the
+        # original cue. Keep an audit flag but do not load either GPU model.
+        result["sensevoice"] = {"status": "not_needed", "elapsed_s": 0.0}
+        result["qwen"] = {"status": "not_needed", "elapsed_s": 0.0}
+        for win in windows:
+            result["windows"].append({
+                "cue_index": win["cue_index"], "start": win["start"], "end": win["end"],
+                "reason": win["reason"], "original": win["whisper_text"],
+                "sensevoice": "", "qwen": "", "decision": "neighbors_review_only",
+                "applied": False,
+            })
+        result["status"] = "flagged_only"
         return list(cues), result
     # Cheap reviewer first. If SenseVoice strongly supports Whisper, there is
     # no disputed text to correct and loading Qwen adds no value. Strong
     # confidence warnings still receive both independent reviewers.
     ensure_unchanged(source_snapshot)
     first, error, elapsed = _run_peer(
-        name="sensevoice", media=media, windows=windows, cfg=cfg,
+        name="sensevoice", media=media, windows=isolated, cfg=cfg,
         progress_callback=progress_callback,
     )
     result["sensevoice"] = {"status": "ok" if not error else error, "elapsed_s": round(elapsed, 2)}

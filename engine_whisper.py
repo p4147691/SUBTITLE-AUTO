@@ -150,7 +150,7 @@ def process_one(media: Path, cfg: dict, runtime, progress_callback=None) -> tupl
                 source_snapshot, progress_callback=review_progress,
                 detected_language=language,
             )
-            if report["reviewed"] > 0:
+            if report.get("flagged_total", report["reviewed"]) > 0:
                 try:
                     report_path = store_report(media, report, source_snapshot)
                 except (OSError, PermissionError) as exc:
@@ -160,8 +160,9 @@ def process_one(media: Path, cfg: dict, runtime, progress_callback=None) -> tupl
                 else:
                     cues = inspected
                     print(
-                        f"[ASR quality] reviewed={report['reviewed']} "
-                        f"corrected={report['corrected']} report={report_path.name}",
+                        f"[ASR quality] flagged={report.get('flagged_total', report['reviewed'])} "
+                        f"reviewed={report['reviewed']} corrected={report['corrected']} "
+                        f"report={report_path.name}",
                         flush=True,
                     )
         except Exception as exc:
