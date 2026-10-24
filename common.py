@@ -22,6 +22,14 @@ JOB_OPTION_SPECS = {
         "values": ("off", "speed", "balanced"),
         "value_labels": {"off": "OFF", "speed": "속도형", "balanced": "밸런스형"},
     },
+    "7": {
+        "name": "asr_quality",
+        "label": "Whisper 탐색",
+        "kind": "cycle",
+        "default": "balanced",
+        "values": ("fast", "balanced", "precise"),
+        "value_labels": {"fast": "빠름", "balanced": "균형", "precise": "정밀"},
+    },
 }
 JOB_OPTION_DEFAULTS = {spec["name"]: spec["default"] for spec in JOB_OPTION_SPECS.values()}
 _JOB_OPTION_BY_NAME = {spec["name"]: spec for spec in JOB_OPTION_SPECS.values()}

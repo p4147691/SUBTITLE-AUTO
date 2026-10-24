@@ -1201,6 +1201,7 @@ OPTION_KEYS = {
     "3": ("rename_folder", "폴더명 한글화"),
     "4": ("keep_model_loaded", "모델 메모리 유지"),
     "5": (JOB_OPTION_SPECS["5"]["name"], JOB_OPTION_SPECS["5"]["label"]),
+    "7": (JOB_OPTION_SPECS["7"]["name"], JOB_OPTION_SPECS["7"]["label"]),
 }
 ENGINE_KEYS = {
     "q": "qwen",

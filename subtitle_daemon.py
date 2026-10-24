@@ -908,6 +908,11 @@ def _require_original_job_media(path: Path) -> None:
 def process_whisper(job_id: str, target: Path) -> dict:
 
     cfg = load_config()
+    # Per-job preset only: does not change the selected ASR model or OCR mode.
+    # Distinct models have separate decoding APIs; Whisper beam is Whisper-only.
+    quality = str(job_option_value(job_id, "asr_quality", "balanced") or "balanced")
+    cfg["whisper_beam_size"] = {"fast": 1, "balanced": 5, "precise": 7}.get(quality, 5)
+    cfg["whisper_quality_mode"] = quality
 
     if _whisper_runtime is None:
 
