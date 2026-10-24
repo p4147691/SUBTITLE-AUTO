@@ -42,34 +42,56 @@ if ($buildinfo -notmatch "--enable-shared") { throw "FFMPEG_IS_NOT_SHARED" }
 $buildinfo | Set-Content -Path (Join-Path $destination "FFMPEG_BUILD_CONFIGURATION.txt") -Encoding UTF8
 Write-Output "FFMPEG_LGPL_ONLY_SHARED_CONFIGURATION_PASS"
 $env:PATH = "$ffBin;$env:PATH"
-& python -m pip install --disable-pip-version-check --quiet "Cython==3.1.6" "setuptools>=70,<90" wheel delvewheel "numpy>=1.26,<3"
-if ($LASTEXITCODE -ne 0) { throw "PYAV_BUILD_DEPENDENCY_INSTALL_FAILED" }
-$pyav = Join-Path $destination "PyAV-v17.1.0-source"
-if (!(Test-Path $pyav) ) {
-  git clone --depth 1 --branch v17.1.0 https://github.com/PyAV-Org/PyAV.git $pyav
-  if ($LASTEXITCODE -ne 0) { throw "PYAV_SOURCE_FETCH_FAILED" }
-}
-$sourceSha = (git -C $pyav rev-parse HEAD).Trim()
-if ($sourceSha -ne "97241598792f4c980c32458187154c7c999d68b3") { throw "PYAV_SOURCE_COMMIT_MISMATCH $sourceSha" }
-Write-Output "PYAV_SOURCE_PINNED_PASS $sourceSha"
-Push-Location $pyav
-try {
-  & python setup.py bdist_wheel "--ffmpeg-dir=$ffDir"
-  if ($LASTEXITCODE -ne 0) { throw "PYAV_LGPL_BUILD_FAILED" }
-}
-finally { Pop-Location }
-$wheels = @(Get-ChildItem -Path (Join-Path $pyav "dist") -Filter "av-17.1.0-*.whl")
-if ($wheels.Count -ne 1) { throw "PYAV_LGPL_WHEEL_COUNT_FAILED $($wheels.Count)" }
+$pyavSourceSha = "97241598792f4c980c32458187154c7c999d68b3"
 $wheelhouse = Join-Path $destination "wheelhouse"
 New-Item -ItemType Directory -Path $wheelhouse -Force | Out-Null
-& python -m delvewheel repair --add-path $ffBin --wheel-dir $wheelhouse $wheels[0].FullName
-if ($LASTEXITCODE -ne 0) { throw "PYAV_LGPL_DELVEWHEEL_FAILED" }
-$repaired = @(Get-ChildItem -Path $wheelhouse -Filter "av-17.1.0-*.whl")
-if ($repaired.Count -ne 1) { throw "PYAV_LGPL_REPAIRED_WHEEL_COUNT_FAILED $($repaired.Count)" }
+$manifest = Join-Path $wheelhouse "LGPL_WHEEL_CACHE_V1.json"
+$existingWheels = @(Get-ChildItem -Path $wheelhouse -Filter "av-17.1.0-*.whl" -File)
+$cacheHit = Test-Path $manifest
+if ($cacheHit) {
+  # GitHub cache is only a performance hint, never a release gate. Verify
+  # the restored wheel SHA, Python ABI, pinned FFmpeg hash, and PyAV source
+  # commit BEFORE installing it. Always run the LGPL runtime gate later.
+  & python (Join-Path $PSScriptRoot "lgpl_wheel_cache.py") verify --wheelhouse $wheelhouse --ffmpeg-sha $expected --pyav-sha $pyavSourceSha
+  if ($LASTEXITCODE -ne 0) { throw "LGPL_WHEEL_CACHE_INVALID_FAIL_CLOSED" }
+  $repaired = @(Get-ChildItem -Path $wheelhouse -Filter "av-17.1.0-*.whl" -File)
+  if ($repaired.Count -ne 1) { throw "LGPL_CACHED_WHEEL_COUNT_INVALID" }
+  Write-Output "LGPL_VERIFIED_WHEEL_CACHE_HIT"
+} else {
+  if ($existingWheels.Count -gt 0) { throw "LGPL_WHEEL_CACHE_INCOMPLETE_FAIL_CLOSED" }
+  & python -m pip install --disable-pip-version-check --quiet "Cython==3.1.6" "setuptools>=70,<90" wheel delvewheel "numpy>=1.26,<3"
+  if ($LASTEXITCODE -ne 0) { throw "PYAV_BUILD_DEPENDENCY_INSTALL_FAILED" }
+  $pyav = Join-Path $destination "PyAV-v17.1.0-source"
+  if (!(Test-Path $pyav)) {
+    git clone --depth 1 --branch v17.1.0 https://github.com/PyAV-Org/PyAV.git $pyav
+    if ($LASTEXITCODE -ne 0) { throw "PYAV_SOURCE_FETCH_FAILED" }
+  }
+  $sourceSha = (git -C $pyav rev-parse HEAD).Trim()
+  if ($sourceSha -ne $pyavSourceSha) { throw "PYAV_SOURCE_COMMIT_MISMATCH $sourceSha" }
+  Write-Output "PYAV_SOURCE_PINNED_PASS $sourceSha"
+  Push-Location $pyav
+  try {
+    & python setup.py bdist_wheel "--ffmpeg-dir=$ffDir"
+    if ($LASTEXITCODE -ne 0) { throw "PYAV_LGPL_BUILD_FAILED" }
+  }
+  finally { Pop-Location }
+  $wheels = @(Get-ChildItem -Path (Join-Path $pyav "dist") -Filter "av-17.1.0-*.whl")
+  if ($wheels.Count -ne 1) { throw "PYAV_LGPL_WHEEL_COUNT_FAILED $($wheels.Count)" }
+  & python -m delvewheel repair --add-path $ffBin --wheel-dir $wheelhouse $wheels[0].FullName
+  if ($LASTEXITCODE -ne 0) { throw "PYAV_LGPL_DELVEWHEEL_FAILED" }
+  $repaired = @(Get-ChildItem -Path $wheelhouse -Filter "av-17.1.0-*.whl" -File)
+  if ($repaired.Count -ne 1) { throw "PYAV_LGPL_REPAIRED_WHEEL_COUNT_FAILED $($repaired.Count)" }
+  Write-Output "LGPL_WHEEL_CACHE_COLD_BUILD"
+}
 & python -m pip uninstall -y av
 if ($LASTEXITCODE -ne 0) { throw "OLD_AV_UNINSTALL_FAILED" }
 & python -m pip install --no-deps --force-reinstall $repaired[0].FullName
 if ($LASTEXITCODE -ne 0) { throw "LGPL_AV_INSTALL_FAILED" }
 & python (Join-Path $PSScriptRoot "verify_lgpl_pyav.py") --wheel $repaired[0].FullName --output $destination
 if ($LASTEXITCODE -ne 0) { throw "LGPL_AV_VERIFICATION_FAILED" }
+# Only cache a wheel that passed the actual imported FFmpeg LGPL checks.
+if (!$cacheHit) {
+  & python (Join-Path $PSScriptRoot "lgpl_wheel_cache.py") record --wheelhouse $wheelhouse --ffmpeg-sha $expected --pyav-sha $pyavSourceSha
+  if ($LASTEXITCODE -ne 0) { throw "LGPL_WHEEL_CACHE_RECORD_FAILED" }
+}
 Write-Output "PYAV_LGPL_BINARY_GATE_PASS $($repaired[0].FullName)"
