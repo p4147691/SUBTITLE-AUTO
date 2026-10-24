@@ -7,8 +7,11 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $destination = Join-Path $root $OutputDirectory
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 $archive = Join-Path $destination "ffmpeg-lgpl-shared-8.1.zip"
-$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip"
-$expected = "0a6aef473350e9ff4c34302fa0cb1286d409b56c8f228367a4819ebb3ac19e9f"
+# Pin a dated upstream release asset AND its published SHA-256 digest. The
+# moving /latest URL changes bytes frequently and must not be used with a
+# static security checksum. A replaced fixed asset still fails closed.
+$uri = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-21-13-06/ffmpeg-n8.1.3-20-gc8de997cb1-win64-lgpl-shared-8.1.zip"
+$expected = "2eec333253518c6deb0a8b6dff6d615e03f254baa1b04f44356de2725e5fb60f"
 if (!(Test-Path $archive)) {
   Invoke-WebRequest -Uri $uri -OutFile $archive -MaximumRedirection 8
 }

@@ -405,8 +405,11 @@ class AltERegressionTests(unittest.TestCase):
                  "request",
                  return_value=(200, {"options": {**options, "screen_ocr": "speed"}}),
              ):
-            changed = subtitle_client.poll_option_keys("job-test", options)
+            changed, requested_engine = subtitle_client.poll_console_keys(
+                "job-test", options, allow_engine_switch=True
+            )
 
+        self.assertIsNone(requested_engine)
         self.assertTrue(changed)
         self.assertEqual(options["screen_ocr"], "speed")
 

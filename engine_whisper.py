@@ -71,10 +71,18 @@ def process_one(media: Path, cfg: dict, runtime, progress_callback=None) -> tupl
     )
 
     source_segments: list[tuple[float, float, str]] = []
+    quality_signals: list[dict] = []
     for seg in segments:
         text = str(seg.text or "").strip()
         if text:
             source_segments.append((float(seg.start), float(seg.end), text))
+            quality_signals.append({
+                "start": float(seg.start),
+                "end": float(seg.end),
+                "avg_logprob": getattr(seg, "avg_logprob", None),
+                "compression_ratio": getattr(seg, "compression_ratio", None),
+                "no_speech_prob": getattr(seg, "no_speech_prob", None),
+            })
 
     language = str(getattr(info, "language", None) or cfg.get("language") or "ja")
     max_span = float(cfg.get("whisper_align_chunk_seconds", 120))
@@ -127,6 +135,41 @@ def process_one(media: Path, cfg: dict, runtime, progress_callback=None) -> tupl
         max_duration=float(cfg.get("srt_max_duration", 6.0)),
         gap_break=float(cfg.get("srt_gap_break", 1.0)),
     )
+    if str(cfg.get("whisper_quality_mode") or "balanced") == "precise":
+        # OCR runs later using the preserved audio SRT. Peer review is limited to
+        # suspicious speech cues; no OCR cue or other engine is ever rewritten.
+        try:
+            from asr_crosscheck import review_cues, store_report
+
+            def review_progress():
+                if progress_callback is not None:
+                    progress_callback(0.99, time.time() - started_file, None)
+
+            inspected, report = review_cues(
+                media, cues, quality_signals, total, cfg,
+                source_snapshot, progress_callback=review_progress,
+                detected_language=language,
+            )
+            if report.get("flagged_total", report["reviewed"]) > 0:
+                try:
+                    report_path = store_report(media, report, source_snapshot)
+                except (OSError, PermissionError) as exc:
+                    # Without an immutable original/correction audit, fail open
+                    # to the original Whisper cues, not to an unaudited edit.
+                    print(f"[ASR quality] report_save_failed={type(exc).__name__}; original retained")
+                else:
+                    cues = inspected
+                    print(
+                        f"[ASR quality] flagged={report.get('flagged_total', report['reviewed'])} "
+                        f"reviewed={report['reviewed']} corrected={report['corrected']} "
+                        f"report={report_path.name}",
+                        flush=True,
+                    )
+        except Exception as exc:
+            # A cancellation must still propagate to daemon job handling.
+            if type(exc).__name__ in {"JobCancelled", "MediaChangedError", "SubtitleCollisionError"}:
+                raise
+            print(f"[ASR quality] peer_review_skipped={type(exc).__name__}", flush=True)
     write_srt_atomic(media.with_suffix(".srt"), cues, source_snapshot=source_snapshot, replace_existing=False)
     return len(cues), total, language
 

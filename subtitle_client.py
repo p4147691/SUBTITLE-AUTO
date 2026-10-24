@@ -1201,6 +1201,7 @@ OPTION_KEYS = {
     "3": ("rename_folder", "폴더명 한글화"),
     "4": ("keep_model_loaded", "모델 메모리 유지"),
     "5": (JOB_OPTION_SPECS["5"]["name"], JOB_OPTION_SPECS["5"]["label"]),
+    "7": (JOB_OPTION_SPECS["7"]["name"], JOB_OPTION_SPECS["7"]["label"]),
 }
 ENGINE_KEYS = {
     "q": "qwen",
@@ -1257,7 +1258,9 @@ def poll_console_keys(job_id: str, options: dict, *, allow_engine_switch: bool) 
     return changed, requested_engine
 
 
-def poll_startup_engine_key(current_engine: str) -> str:
+def poll_startup_engine_key(current_engine: str, options: dict | None = None) -> str:
+    # Accept quality and OCR choices before the first /run: a warm resident
+    # model can start faster than the user can press 7 after submission.
     selected = str(current_engine).lower().strip()
     while msvcrt.kbhit():
         ch = msvcrt.getwch()
@@ -1268,6 +1271,11 @@ def poll_startup_engine_key(current_engine: str) -> str:
         if ch == "\x03":
             raise KeyboardInterrupt
         selected = ENGINE_KEYS.get(ch.lower(), selected)
+        if options is not None and ch in OPTION_KEYS:
+            name, _label = OPTION_KEYS[ch]
+            options[name] = next_job_option_value(
+                name, options.get(name, JOB_OPTION_DEFAULTS.get(name))
+            )
     return selected
 
 
@@ -1362,7 +1370,7 @@ def main() -> int:
         def startup_tick():
             last_render = 0.0
             while not startup_stop.wait(0.10):
-                selected = poll_startup_engine_key(startup_selected_engine[0])
+                selected = poll_startup_engine_key(startup_selected_engine[0], options)
                 if selected != startup_selected_engine[0]:
                     startup_selected_engine[0] = selected
                     dashboard.set_engine(selected)
@@ -1383,8 +1391,12 @@ def main() -> int:
             h = ensure_daemon(abort_if=lambda: startup_selected_engine[0] != args.engine)
             if h is not None and startup_selected_engine[0] == args.engine:
                 break
+        # Freeze startup selection before submitting the first job so its
+        # options snapshot exactly matches what the dashboard displayed.
+        startup_stop.set()
+        startup_thread.join(timeout=1.5)
         try:
-            _, started = request("/run", method="POST", body={"engine": args.engine, "target": str(target), "options": options}, timeout=15)
+            _, started = request("/run", method="POST", body={"engine": args.engine, "target": str(target), "options": dict(options)}, timeout=15)
         except urllib.error.HTTPError as e:
             body = {}
             try:
