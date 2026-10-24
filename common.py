@@ -24,7 +24,7 @@ JOB_OPTION_SPECS = {
     },
     "7": {
         "name": "asr_quality",
-        "label": "Whisper 탐색",
+        "label": "Whisper 품질",
         "kind": "cycle",
         "default": "balanced",
         "values": ("fast", "balanced", "precise"),

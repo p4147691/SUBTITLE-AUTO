@@ -35,5 +35,29 @@ class QualityPresetsTests(unittest.TestCase):
         for name in ("common.py", "subtitle_client.py", "subtitle_daemon.py", "engine_whisper.py"):
             ast.parse((ROOT / name).read_text(encoding="utf-8"))
 
+
+    def test_startup_key_seven_preconfigures_first_job_and_keeps_ocr_independent(self):
+        from unittest.mock import patch
+        import subtitle_client
+        opts = dict(JOB_OPTION_DEFAULTS)
+        opts["screen_ocr"] = "off"
+        keys = iter(["7", "5", "w"])
+        with patch.object(subtitle_client.msvcrt, "kbhit", side_effect=[True, True, True, False]), (
+             patch.object(subtitle_client.msvcrt, "getwch", side_effect=lambda: next(keys))):
+            selected = subtitle_client.poll_startup_engine_key("qwen", opts)
+        self.assertEqual("whisper", selected)
+        self.assertEqual("precise", opts["asr_quality"])
+        self.assertEqual("speed", opts["screen_ocr"])
+
+    def test_startup_selection_cycles_without_changing_selected_engine(self):
+        from unittest.mock import patch
+        import subtitle_client
+        opts = dict(JOB_OPTION_DEFAULTS)
+        with patch.object(subtitle_client.msvcrt, "kbhit", side_effect=[True, True, False]), (
+             patch.object(subtitle_client.msvcrt, "getwch", side_effect=["7", "7"])):
+            selected = subtitle_client.poll_startup_engine_key("sensevoice", opts)
+        self.assertEqual("sensevoice", selected)
+        self.assertEqual("fast", opts["asr_quality"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -908,11 +908,7 @@ def _require_original_job_media(path: Path) -> None:
 def process_whisper(job_id: str, target: Path) -> dict:
 
     cfg = load_config()
-    # Per-job preset only: does not change the selected ASR model or OCR mode.
-    # Distinct models have separate decoding APIs; Whisper beam is Whisper-only.
-    quality = str(job_option_value(job_id, "asr_quality", "balanced") or "balanced")
-    cfg["whisper_beam_size"] = {"fast": 1, "balanced": 5, "precise": 7}.get(quality, 5)
-    cfg["whisper_quality_mode"] = quality
+    # The selected model remains Whisper; OCR is a separate post-processing phase.
 
     if _whisper_runtime is None:
 
@@ -994,6 +990,13 @@ def process_whisper(job_id: str, target: Path) -> dict:
 
         try:
             _require_original_job_media(path)
+            # Capture the latest 7-key choice for this file. Changes made while
+            # a file is already being decoded take effect on the next file.
+            quality = str(job_option_value(job_id, "asr_quality", "balanced") or "balanced")
+            cfg["whisper_beam_size"] = {"fast": 1, "balanced": 5, "precise": 7}.get(quality, 5)
+            cfg["whisper_quality_mode"] = quality
+            if quality == "precise":
+                log("whisper_precise_quality_enabled selective_peers=sensevoice,qwen auto_correction=two_peer_consensus")
             cues, duration, language = engine_whisper.process_one(
                 path,
                 cfg,
@@ -1618,7 +1621,15 @@ def run_job(job_id: str, engine: str, target: Path, folder_guard=None) -> None:
             message="자막 생성 시작",
         )
 
-        if _has_pending_asr(media_for_job):
+        # In Whisper precise mode, defer optional OCR prefetch while the
+        # independent ASR reviewers may load on GPU. OCR still runs normally
+        # after ASR, and fast/balanced modes preserve the old prefetch path.
+        precise_ocr = (
+            engine == "whisper"
+            and str(job_option_value(job_id, "asr_quality", "balanced")) == "precise"
+            and str(job_option_value(job_id, "screen_ocr", "off")) != "off"
+        )
+        if _has_pending_asr(media_for_job) and not precise_ocr:
             prefetch_thread = threading.Thread(
                 target=prefetch_ocr_worker_when_ready,
                 name=f"ocr-prefetch-{job_id}",
@@ -1626,6 +1637,8 @@ def run_job(job_id: str, engine: str, target: Path, folder_guard=None) -> None:
             )
             resident_ocr_holder["thread"] = prefetch_thread
             prefetch_thread.start()
+        elif precise_ocr:
+            log(f"ocr_prefetch_deferred_for_whisper_precision job_id={job_id}")
 
         if _has_pending_asr(media_for_job):
             if engine == "whisper":
