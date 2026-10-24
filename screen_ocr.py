@@ -1698,10 +1698,21 @@ def _load_ocr(mode: str, *, force_fp32: bool = False):
     except Exception:
         device = "cpu"
 
-    use_tensorrt = bool(
-        requested_precision == "fp16"
-        and device.startswith("gpu")
-        and not force_fp32
+    from ocr_acceleration_policy import allow_tensorrt_fp16, disabled_reason
+
+    # This is an inexpensive CUDA API query. Do not initialize TensorRT just
+    # to discover an unsupported compute capability.
+    capability = None
+    if requested_precision == "fp16" and device.startswith("gpu") and not force_fp32:
+        try:
+            capability = paddle.device.cuda.get_device_capability()
+        except (AttributeError, RuntimeError, ValueError, TypeError):
+            capability = None
+    use_tensorrt = allow_tensorrt_fp16(
+        requested_precision, device, force_fp32, capability
+    )
+    policy_reason = disabled_reason(
+        requested_precision, device, force_fp32, capability
     )
     if use_tensorrt:
         _install_tensorrt_compat()
@@ -1717,7 +1728,7 @@ def _load_ocr(mode: str, *, force_fp32: bool = False):
         "precision": effective_precision,
     }
 
-    fallback_reason = None
+    fallback_reason = policy_reason
     try:
         ocr = PaddleOCR(device=device, **kwargs)
     except Exception as exc:
