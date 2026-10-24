@@ -23,8 +23,8 @@ jobs:
               ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
           print(f'Syntax PASS: {len(paths)} Python files')
           '@ | python -
-      - name: Whisper quality presets and selective ASR peer review tests
-        run: python -m unittest -q test_asr_quality_presets test_asr_crosscheck
+      - name: Whisper quality presets, selective ASR review and OCR GPU guard
+        run: python -m unittest -q test_asr_quality_presets test_asr_crosscheck test_ocr_acceleration_policy
       - name: No models, secrets, media or environments tracked
         shell: pwsh
         run: |
